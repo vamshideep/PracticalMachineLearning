@@ -1,0 +1,103 @@
+---
+title: "Predict the exercise based on the activity"
+author: "Vamshideep Devershetty"
+date: "Saturday, August 23, 2014"
+output: html_document
+---
+##Background
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, my goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset). 
+
+I first read data into mydata variable, indicating the missing strings and looked at the dimensions of my data.
+
+```{r}
+library(knitr)
+library(caret)
+library(ggplot2)
+mydata <- read.csv("./data/pml-training.csv",na.strings=c("NA",""))
+testdata <- read.csv("./data/pml-testing.csv",na.strings=c("NA",""))
+#names(mydata)
+dim(mydata)
+#qplot(roll_arm,data=mydata,facets=.~classe)
+
+```
+Obviously I cannot use all of my data to predict the outcomes, so I will remove all the variables, which are not very reliable.
+
+I do this by using NearZeroVariance.
+
+##Preprocessing Data:
+Removing all Nonzero variance columns
+```{r}
+nzv <- nearZeroVar(mydata)
+#nzv
+cleandata <- mydata[,-nzv]
+dim(cleandata)
+#names(cleandata)
+```
+Removing unneeded columns like timestamp, username, which do not effect the outcome,see here for more information --> http://groupware.les.inf.puc-rio.br/har
+
+```{r}
+
+nocol<-grep("timestamp|user_name|X",names(cleandata))
+#nocol
+cleanerdata <- cleandata[,-nocol]
+dim(cleanerdata)
+#names(cleanerdata)
+```
+Upon visually inspecting columns, found that there columns with lot of missing values, removing all columns which have more than 95% of missing values(NA)
+We do this by calculating NA's in each column and checking if it is greater than 95%
+
+```{r}
+limitna <- dim(cleanerdata)[1] * 0.95
+badcolumns <- apply(cleanerdata, 2, function(x) sum(is.na(x)) > limitna  )
+#sum(is.na(cleanerdata[,"magnet_forearm_z"]))
+dim(cleanerdata[!badcolumns])
+cleanestdata <- cleanerdata[!badcolumns]
+
+```
+
+Now we have reduced the number of valid columns for performing further analysis.
+
+Now let's split my data into Training and Test sets
+So, we can model on training set and test it out on test set
+
+```{r}
+inTrain <- createDataPartition(cleanestdata$classe, p=0.7, list= FALSE)
+training <- cleanestdata[inTrain,]
+testing <- cleanestdata[-inTrain,]
+#dim(training)
+#dim(testing)
+#names(training)
+```
+##Model Training:
+
+I am going to use Random Forest to train the model. To make sure Random Forest uses cross validation I will modify the traincontrol resmapling to use cross validation. 
+
+
+```{r}
+set.seed(1235)
+trControl = trainControl(method = "cv", number = 4, allowParallel =TRUE);
+modFitRF <- train(training$classe ~.,data = training,method="rf",trControl=trControl);
+```
+##Testing My Model:
+Since the model has been trained, I will now test the model on my testing data.
+
+```{r}
+ptesting <- predict(modFitRF, testing)
+print(confusionMatrix(ptesting,testing$classe))
+```
+As testing has been completed, it looks very good with 99.7% accuracy. So, our 
+##out of sample error rate is 1-accuracy = 0.3%.
+
+I will go ahead and run it against the testing data.
+
+##Predicting on new test data
+```{r}
+ptest <- predict(modFitRF, testdata)
+```
+##Conclusion:
+So, the predicted values are
+```{r echo=TRUE}
+ptest
+```
+Random Forest has accurately predicted the category of activity.
